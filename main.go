@@ -23,14 +23,24 @@ func (f *fileArgs) Set(value string) error {
   return nil
 }
 
+const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
+`.*\[(?P<timestamp>\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2} (?:\+|\-)\d{4})\].*` +
+`emailAddress=(?P<email>[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+).*` +
+`(?P<ua>".*"\s"-"$)`
+
 //type explore map[int][]string
+
+//type record struct {
+//  ip []byte
+//  dateTime []byte
+//  email []byte
+//  userAgent []byte
+//}
 
 func main() {
   var inFlags fileArgs
-  var regexpFlag string
 
   flag.Var(&inFlags, "in", "comma-separated list of log file names")
-  flag.StringVar(&regexpFlag, "regexp", "",  "regexp")
   flag.Parse()
 
   if len(inFlags) == 0 {
@@ -38,7 +48,7 @@ func main() {
     os.Exit(1)
   }
 
-  re := regexp.MustCompile(regexpFlag)
+  re := regexp.MustCompile(logPattern)
   result := make(chan int)
 
   for _,fname := range inFlags {
@@ -56,7 +66,12 @@ func main() {
       scanner.Split(bufio.ScanLines)
       for scanner.Scan() {
         line := scanner.Bytes()
-        fmt.Printf("%q\n", re.FindAllSubmatch(line, -1))
+        submatch := re.FindAllSubmatch(line, -1)
+        if submatch != nil {
+          //recordVal := record{ submatch[0][1],
+          //  submatch[0][2], submatch[0][3], submatch[0][3] }
+          fmt.Printf("%q\n", submatch[0][1:])
+        }
       }
       if scanner.Err() != nil {
         log.Fatal(err)

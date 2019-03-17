@@ -1,14 +1,13 @@
 package main
 
 import (
-  "encoding/csv"
 	"fmt"
-	"io"
 	"log"
 	"strings"
   "flag"
   "os"
-  "encoding/json"
+  "bufio"
+  "regexp"
 )
 
 type fileArgs []string
@@ -24,11 +23,14 @@ func (f *fileArgs) Set(value string) error {
   return nil
 }
 
-type explore map[int][]string
+//type explore map[int][]string
 
 func main() {
   var inFlags fileArgs
+  var regexpFlag string
+
   flag.Var(&inFlags, "in", "comma-separated list of log file names")
+  flag.StringVar(&regexpFlag, "regexp", "",  "regexp")
   flag.Parse()
 
   if len(inFlags) == 0 {
@@ -36,7 +38,8 @@ func main() {
     os.Exit(1)
   }
 
-  result := make(chan *explore)
+  re := regexp.MustCompile(regexpFlag)
+  result := make(chan int)
 
   for _,fname := range inFlags {
     file, err := os.Open(fname)
@@ -49,26 +52,40 @@ func main() {
       }
     } ()
     go func() {
-      example := make(explore)
-      r := csv.NewReader(file)
-      r.Comma = ' ';
-      r.FieldsPerRecord = -1;
-      for {
-    		record, err := r.Read()
-    		if err == io.EOF {
-          result <- &example
-    			break
-    		}
-    		if err != nil {
-    			log.Fatal(err)
-    		}
-        example[len(record)] = record
-    	}
+      scanner := bufio.NewScanner(file)
+      scanner.Split(bufio.ScanLines)
+      for scanner.Scan() {
+        line := scanner.Bytes()
+        fmt.Printf("%q\n", re.FindAllSubmatch(line, -1))
+      }
+      if scanner.Err() != nil {
+        log.Fatal(err)
+      }
+      result <- 1
+
+    // go func() {
+    //   example := make(explore)
+    //   r := csv.NewReader(file)
+    //   r.Comma = ' ';
+    //   r.FieldsPerRecord = -1;
+    //   for {
+    // 		record, err := r.Read()
+    // 		if err == io.EOF {
+    //       result <- &example
+    // 			break
+    // 		}
+    // 		if err != nil {
+    // 			log.Fatal(err)
+    // 		}
+    //     example[len(record)] = record
+    // 	}
     } ()
   }
-  json, err := json.MarshalIndent(*<-result, "", "  ")
-  if err != nil {
-		log.Fatal(err)
-	}
-  fmt.Println(string(json))
+
+  <-result
+//  json, err := json.MarshalIndent(*<-result, "", "  ")
+//  if err != nil {
+//		log.Fatal(err)
+//	}
+//  fmt.Println(string(json))
 }

@@ -1,7 +1,7 @@
 # log-cardinality
-Count cardinality of given combination of fields from provided log file
+Counts cardinality of daily active users grouped by application (user agent) type
 
-Log file records must strictly match the folowing regexp
+Source log file records must strictly match the folowing regexp
 
 ```go
 const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
@@ -10,8 +10,29 @@ const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 `(?P<ua>".*"\s"-"$)`
 ```
 
-Will likely depend on
-  * [Siphash](https://github.com/dchest/siphash)
-  * [Highway](https://github.com/google/highwayhash/)
-  * [HyperLogLog++ for Go](https://github.com/lytics/hll)
+# Sample Output
+
+```json
+{
+  "2019-03-14": {
+    "Electron": 719,
+    "Web": 148,
+    "grpc-java": 182,
+    "grpc-objc": 41
+  },
+  "2019-03-15": {
+    "Electron": 742,
+    "Web": 143,
+    "grpc-java": 187,
+    "grpc-objc": 47
+  }
+}
+```
+
+
+# Depends on
+  * [Highway](https://github.com/google/highwayhash/) for hash calculation
+  * [HyperLogLog++ for Go](https://github.com/lytics/hll) to calculate cardinality
+
+# Someday try
   * [HyperLogLog axiomhq](https://github.com/axiomhq/hyperloglog)

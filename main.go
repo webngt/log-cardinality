@@ -9,9 +9,15 @@ import (
   "bufio"
   "regexp"
   "time"
+  highway "github.com/dgryski/go-highway"
+  "github.com/lytics/hll"
+  "strconv"
+  "encoding/json"
 )
 
 type fileArgs []string
+
+type cardinality map[string]*hll.Hll
 
 func (f *fileArgs) String() string {
   return fmt.Sprint(*f)
@@ -64,10 +70,14 @@ const timePattern = `^(?P<day>\d{2})\/(?P<month>\d{2})\/(?P<year>\d{4}):`+
 
 const monthPattern = `(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)`
 
+const uaPattern = `(grpc-java|grpc-objc|Electron)`
+
 
 func main() {
+  var monthDecode = [...]string{"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"}
   var inFlags fileArgs
   var locationFlag string
+  key := highway.Lanes{0x0706050403020100, 0x0F0E0D0C0B0A0908, 0x1716151413121110, 0x1F1E1D1C1B1A1918}
 
   flag.Var(&inFlags, "in", "comma-separated list of log file names")
   flag.StringVar(&locationFlag, "locale", "",
@@ -89,9 +99,9 @@ func main() {
 
   timeRe := regexp.MustCompile(monthPattern)
   timeConvert := regexp.MustCompile(timePattern)
+  appPattern := regexp.MustCompile(uaPattern)
 
-
-  result := make(chan int)
+  result := make(chan map[string]cardinality)
 
   for _,fname := range inFlags {
     file, err := os.Open(fname)
@@ -106,6 +116,9 @@ func main() {
     go func() {
       scanner := bufio.NewScanner(file)
       scanner.Split(bufio.ScanLines)
+      dayBuckets := make(map[string]cardinality)
+      currYear, currMonth, currDay := 0,time.January,0
+      dateKey := ""
       for scanner.Scan() {
         line := scanner.Bytes()
         submatch := re.FindAllSubmatch(line, -1)
@@ -113,30 +126,81 @@ func main() {
           // normalize month
           timeSlice := timeRe.ReplaceAllFunc(submatch[0][1:][1], replaceMonth)
 
-          fmt.Printf("%q\n", timeSlice)
+          //fmt.Printf("%q\n", timeSlice)
 
-        	normalizedTime := []byte{}
+        	normalizedTimeSlice := []byte{}
 
-          normalizedTime = timeConvert.Expand(normalizedTime,
+          normalizedTimeSlice = timeConvert.Expand(normalizedTimeSlice,
             []byte(`${year}-${month}-${day}T${hour}:${minutes}:${seconds}Z`),
             timeSlice,
             timeConvert.FindAllSubmatchIndex(timeSlice, -1)[0])
 
-          t, err := time.ParseInLocation(time.RFC3339,
-            string(normalizedTime), location)
+          date, err := time.Parse(time.RFC3339,
+            string(normalizedTimeSlice))
           if err != nil {
             log.Fatal(err)
             os.Exit(1)
           }
-          fmt.Printf("%q\n", submatch[0][1:], t.In(location))
+          // swap date to target location
+          date = date.In(location)
+
+          // create date key
+          year, month, day := date.Date()
+          if (currYear != year || currMonth != month || currDay != day) {
+            dateKey = "" + strconv.Itoa(year) + "-" +
+            monthDecode[month - 1] + "-" +strconv.Itoa(day)
+            //fmt.Println(dateKey)
+            currYear, currMonth, currDay = year, month, day
+          }
+          dayCardinality := dayBuckets[dateKey]
+          if dayCardinality == nil {
+            dayCardinality = make(cardinality)
+            dayBuckets[dateKey] = dayCardinality
+          }
+
+          // app type
+          appTypeSlice := appPattern.FindAllSubmatch(submatch[0][1:][3], -1)
+          appType := "Web"
+          if appTypeSlice != nil {
+              appType = string(appTypeSlice[0][1:][0])
+          }
+
+          counter := dayCardinality[appType]
+
+          if counter == nil {
+            counter = hll.NewHll(14, 25)
+            dayCardinality[appType] = counter
+          }
+
+          // user hash
+          user := highway.Hash(key, submatch[0][1:][2])
+
+          counter.Add(user)
+
         }
       }
       if scanner.Err() != nil {
         log.Fatal(err)
       }
-      result <- 1
+      result <- dayBuckets
     } ()
   }
 
-  <-result
+
+  out := make(map[string]map[string]uint64)
+
+  for date, apps := range <-result {
+    out[date] = make(map[string]uint64)
+    for app, hll := range apps {
+      out[date][app] = hll.Cardinality()
+    }
+  }
+
+
+  json, err := json.MarshalIndent(out, "", "  ")
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  fmt.Println(string(json))
 }

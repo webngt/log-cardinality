@@ -10,6 +10,11 @@ const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 `(?P<ua>".*"\s"-"$)`
 ```
 
+Usage
+```bash
+log-cardinality -in "$PATH_TO_1/access.log $PATH_TO_2/access.log $PATH_TO_N/access.log" -locale Europe/Moscow
+```
+
 # Sample Output
 
 ```json
@@ -33,6 +38,3 @@ const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 # Depends on
   * [Highway](https://github.com/google/highwayhash/) for hash calculation
   * [HyperLogLog++ for Go](https://github.com/lytics/hll) to calculate cardinality
-
-# Someday try
-  * [HyperLogLog axiomhq](https://github.com/axiomhq/hyperloglog)

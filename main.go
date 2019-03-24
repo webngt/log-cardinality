@@ -13,6 +13,7 @@ import (
   "github.com/lytics/hll"
   "strconv"
   "encoding/json"
+  "github.com/webngt/timeutils"
 )
 
 type fileArgs []string
@@ -97,8 +98,6 @@ func main() {
 
   re := regexp.MustCompile(logPattern)
 
-  timeRe := regexp.MustCompile(monthPattern)
-  timeConvert := regexp.MustCompile(timePattern)
   appPattern := regexp.MustCompile(uaPattern)
 
   result := make(chan map[string]cardinality)
@@ -124,19 +123,8 @@ func main() {
         submatch := re.FindAllSubmatch(line, -1)
         if submatch != nil {
           // normalize month
-          timeSlice := timeRe.ReplaceAllFunc(submatch[0][1:][1], replaceMonth)
+          date, err := timeutils.ParseDateString(string(submatch[0][1:][1]))
 
-          //fmt.Printf("%q\n", timeSlice)
-
-        	normalizedTimeSlice := []byte{}
-
-          normalizedTimeSlice = timeConvert.Expand(normalizedTimeSlice,
-            []byte(`${year}-${month}-${day}T${hour}:${minutes}:${seconds}Z`),
-            timeSlice,
-            timeConvert.FindAllSubmatchIndex(timeSlice, -1)[0])
-
-          date, err := time.Parse(time.RFC3339,
-            string(normalizedTimeSlice))
           if err != nil {
             log.Fatal(err)
             os.Exit(1)

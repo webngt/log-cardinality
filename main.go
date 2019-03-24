@@ -16,74 +16,28 @@ import (
   "github.com/webngt/timeutils"
 )
 
-type fileArgs []string
-
 type cardinality map[string]*hll.Hll
-
-func (f *fileArgs) String() string {
-  return fmt.Sprint(*f)
-}
-
-func (f *fileArgs) Set(value string) error {
-  for _, str := range strings.Split(value, ",") {
-    *f = append(*f, str)
-  }
-  return nil
-}
-
-func replaceMonth(in []byte) []byte {
-  month := string(in)
-  switch month {
-  case "Jan":
-    return []byte("01")
-  case "Feb":
-    return []byte("02")
-  case "Mar":
-    return []byte("03")
-  case "Apr":
-    return []byte("04")
-  case "May":
-    return []byte("05")
-  case "Jun":
-    return []byte("06")
-  case "Jul":
-    return []byte("07")
-  case "Aug":
-    return []byte("08")
-  case "Sep":
-    return []byte("09")
-  case "Oct":
-    return []byte("10")
-  case "Nov":
-    return []byte("11")
-  case "Dec":
-  }
-  return []byte("12")
-}
 
 const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 `.*\[(?P<timestamp>\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2} (?:\+|\-)\d{4})\].*` +
 `emailAddress=(?P<email>[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+).*` +
 `(?P<ua>".*"\s"-"$)`
 
-const timePattern = `^(?P<day>\d{2})\/(?P<month>\d{2})\/(?P<year>\d{4}):`+
-`(?P<hour>\d{2}):(?P<minutes>\d{2}):(?P<seconds>\d{2}) (?:\+|\-)\d{4}`
-
-const monthPattern = `(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)`
-
 const uaPattern = `(grpc-java|grpc-objc|Electron)`
 
 
 func main() {
   var monthDecode = [...]string{"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"}
-  var inFlags fileArgs
+  var in string
   var locationFlag string
   key := highway.Lanes{0x0706050403020100, 0x0F0E0D0C0B0A0908, 0x1716151413121110, 0x1F1E1D1C1B1A1918}
 
-  flag.Var(&inFlags, "in", "comma-separated list of log file names")
+  flag.StringVar(&in, "in", "", "space separated list of log file names")
   flag.StringVar(&locationFlag, "locale", "",
     "specify target locale for cardinality calculation")
   flag.Parse()
+
+  inFlags := strings.Fields(in)
 
   if (len(inFlags) == 0 || locationFlag == "") {
     flag.PrintDefaults()
@@ -101,6 +55,8 @@ func main() {
   appPattern := regexp.MustCompile(uaPattern)
 
   result := make(chan map[string]cardinality)
+  dayBucket := make(chan map[string]cardinality)
+
 
   for _,fname := range inFlags {
     file, err := os.Open(fname)
@@ -170,9 +126,32 @@ func main() {
       if scanner.Err() != nil {
         log.Fatal(err)
       }
-      result <- dayBuckets
+      dayBucket <- dayBuckets
     } ()
   }
+
+  // merge hll++
+  go func() {
+    merge := make(map[string]cardinality)
+    for range inFlags {
+      for date, apps := range <-dayBucket {
+        if merge[date] != nil {
+          for app, hll := range apps {
+            if merge[date][app] != nil {
+              merge[date][app].Combine(hll)
+            } else {
+              merge[date][app] = hll
+            }
+          }
+        } else {
+          merge[date] = apps
+        }
+      }
+    }
+    result <- merge
+  } ()
+
+
 
 
   out := make(map[string]map[string]uint64)

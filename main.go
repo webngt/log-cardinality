@@ -121,6 +121,8 @@ func main() {
 
           counter.Add(user)
 
+        } else {
+          fmt.Println(string(line))
         }
       }
       if scanner.Err() != nil {

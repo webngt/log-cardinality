@@ -12,7 +12,7 @@ const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 
 Usage
 ```bash
-log-cardinality -in "$PATH_TO_1/access.log $PATH_TO_2/access.log $PATH_TO_N/access.log" -locale Europe/Moscow
+log-cardinality -in "`find $LOG_PATH_PATTERN/access.log -printf '%p '`" -locale Europe/Moscow
 ```
 
 # Sample Output

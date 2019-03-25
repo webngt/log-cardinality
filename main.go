@@ -55,7 +55,7 @@ func main() {
   appPattern := regexp.MustCompile(uaPattern)
 
   result := make(chan map[string]cardinality)
-  dayBucket := make(chan map[string]cardinality)
+  dayMap := make(chan map[string]cardinality)
 
 
   for _,fname := range inFlags {
@@ -121,14 +121,12 @@ func main() {
 
           counter.Add(user)
 
-        } else {
-          fmt.Println(string(line))
-        }
+        } 
       }
       if scanner.Err() != nil {
         log.Fatal(err)
       }
-      dayBucket <- dayBuckets
+      dayMap <- dayBuckets
     } ()
   }
 
@@ -136,7 +134,7 @@ func main() {
   go func() {
     merge := make(map[string]cardinality)
     for range inFlags {
-      for date, apps := range <-dayBucket {
+      for date, apps := range <-dayMap {
         if merge[date] != nil {
           for app, hll := range apps {
             if merge[date][app] != nil {

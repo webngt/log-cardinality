@@ -18,6 +18,15 @@ import (
 
 type cardinality map[string]*hll.Hll
 
+func (c cardinality)counter(appType string) *hll.Hll {
+  value, ok := c[appType]
+  if !ok {
+    value = hll.NewHll(14, 25)
+    c[appType] = value
+  }
+  return value
+}
+
 const logPattern = `^(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})` +
 `.*\[(?P<timestamp>\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2} (?:\+|\-)\d{4})\].*` +
 `emailAddress=(?P<email>[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+).*` +
@@ -96,8 +105,10 @@ func main() {
             //fmt.Println(dateKey)
             currYear, currMonth, currDay = year, month, day
           }
-          dayCardinality := dayBuckets[dateKey]
-          if dayCardinality == nil {
+
+          dayCardinality, ok := dayBuckets[dateKey]
+
+          if !ok {
             dayCardinality = make(cardinality)
             dayBuckets[dateKey] = dayCardinality
           }
@@ -107,21 +118,26 @@ func main() {
           appType := "Web"
           if appTypeSlice != nil {
               appType = string(appTypeSlice[0][1:][0])
+              if appType == "Electron" {
+                appType = "Desktop"
+              }
           }
 
-          counter := dayCardinality[appType]
 
-          if counter == nil {
-            counter = hll.NewHll(14, 25)
-            dayCardinality[appType] = counter
-          }
+          counter := dayCardinality.counter(appType)
 
           // user hash
           user := highway.Hash(key, submatch[0][1:][2])
 
           counter.Add(user)
 
-        } 
+          // web + desktop
+          if (appType == "Web" || appType == "Desktop") {
+            appType = "Web+Desktop"
+            counter := dayCardinality.counter(appType)
+            counter.Add(user)
+          }
+        }
       }
       if scanner.Err() != nil {
         log.Fatal(err)
@@ -135,9 +151,9 @@ func main() {
     merge := make(map[string]cardinality)
     for range inFlags {
       for date, apps := range <-dayMap {
-        if merge[date] != nil {
+        if _, ok := merge[date]; ok {
           for app, hll := range apps {
-            if merge[date][app] != nil {
+            if _, ok := merge[date][app]; ok {
               merge[date][app].Combine(hll)
             } else {
               merge[date][app] = hll

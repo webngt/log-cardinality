@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/webngt/log-cardinality)](https://goreportcard.com/report/github.com/webngt/log-cardinality)
+
 # log-cardinality
 Counts cardinality of daily active users grouped by application (user agent) type
 
